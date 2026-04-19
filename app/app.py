@@ -42,7 +42,7 @@ DEFAULT_DATA = {
 }
 
 TOTAL_REQUIRED_REVENUE = 54_629_865
-DEFAULT_BASE_TAX_INCREASE = 10.0
+DEFAULT_BASE_TAX_INCREASE = 11.58162
 
 
 # ---------------------------------------------------------------------------
@@ -165,7 +165,7 @@ app_ui = ui.page_fluid(
             "Base Tax Increase (%)",
             min=10.0, max=14.0,
             value=DEFAULT_BASE_TAX_INCREASE,
-            step=0.0001, post="%", width="100%",
+            step=0.00002, post="%", width="100%",
         ),
     ),
 
