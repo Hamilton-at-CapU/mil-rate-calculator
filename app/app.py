@@ -58,9 +58,9 @@ def make_class_row(cls):
     c = safe_id(cls)
     return ui.tags.tr(
         ui.tags.td(cls, style="padding: 4px 8px; white-space: nowrap; font-size: 0.85rem; font-weight: 500;"),
-        ui.tags.td(ui.input_numeric(f"ntv_{c}", None, value=ntv, min=0, step=1_000_000, width="100%")),
-        ui.tags.td(ui.input_numeric(f"nmc_{c}", None, value=nmc, min=0, step=100_000, width="100%")),
-        ui.tags.td(ui.input_numeric(f"pyr_{c}", None, value=pyr, min=0, step=10_000, width="100%")),
+        ui.tags.td(ui.input_numeric(f"ntv_{c}", None, value=ntv, min=0, step=1, width="100%")),
+        ui.tags.td(ui.input_numeric(f"nmc_{c}", None, value=nmc, min=0, step=1, width="100%")),
+        ui.tags.td(ui.input_numeric(f"pyr_{c}", None, value=pyr, min=0, step=1, width="100%")),
     )
 
 
