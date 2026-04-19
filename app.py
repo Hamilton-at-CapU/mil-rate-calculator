@@ -19,14 +19,16 @@ PROPERTY_CLASSES = [
     "9 - Farm",
 ]
 
-# Classes whose tax rate is fixed (not driven by Base Tax Increase)
 FIXED_RATE_CLASSES = {
     "2 - Utilities":        40.0,
     "4 - Port":             27.5,
     "4 - Port Improvement": 22.5,
 }
 
-# Default values from spreadsheet: (Net Taxable Value, NMC Value, Prior Year Revenue)
+VARIABLE_CLASSES = [c for c in PROPERTY_CLASSES if c not in FIXED_RATE_CLASSES]
+PIE_COLORS = px.colors.qualitative.Plotly
+CLASS_COLORS = {cls: PIE_COLORS[i % len(PIE_COLORS)] for i, cls in enumerate(VARIABLE_CLASSES)}
+
 DEFAULT_DATA = {
     "1 - Residential":      (11_746_534_110, 217_878_600, 29_698_249),
     "2 - Utilities":        (    66_078_050,     555_900,  2_531_178),
@@ -40,7 +42,7 @@ DEFAULT_DATA = {
 }
 
 TOTAL_REQUIRED_REVENUE = 54_629_865
-DEFAULT_BASE_TAX_INCREASE = 11.58  # percent
+DEFAULT_BASE_TAX_INCREASE = 10.0
 
 
 # ---------------------------------------------------------------------------
@@ -87,69 +89,105 @@ body { font-family: sans-serif; }
 app_ui = ui.page_fluid(
     ui.tags.head(ui.tags.style(CSS)),
     ui.h2("Hamilton 2026 Tax Rate Calculator"),
-    ui.p(
-        "Revenue Distribution Method. "
-        "Edit the property class table, then adjust the Base Tax Increase slider "
-        "until the Difference to Required Revenue approaches zero."
-    ),
+    ui.p("Revenue Distribution Method."),
 
-    ui.layout_columns(
-        ui.div(
-            ui.div(ui.output_text("stat_required"), class_="stat-value"),
-            ui.div("Total Required Revenue", class_="stat-label"),
-            class_="stat-box",
-        ),
-        ui.div(
-            ui.div(ui.output_text("stat_total_rev"), class_="stat-value"),
-            ui.div("Total Revenue (incl. NMC)", class_="stat-label"),
-            class_="stat-box",
-        ),
-        ui.div(
-            ui.div(ui.output_text("stat_diff"), class_="stat-value"),
-            ui.div("Difference to Required Revenue", class_="stat-label"),
-            class_="stat-box",
-        ),
-        col_widths=[4, 4, 4],
-    ),
 
     ui.br(),
 
     ui.card(
-        ui.card_header("Base Tax Increase — adjust until Difference is near $0"),
-        ui.input_slider(
-            "base_tax_increase",
-            "Base Tax Increase (%)",
-            min=0.0, max=30.0,
-            value=DEFAULT_BASE_TAX_INCREASE,
-            step=0.01, post="%", width="100%",
+        ui.card_header(
+            ui.layout_columns(
+                "Step 1 — Input Data",
+                ui.input_checkbox("show_step1", "Show", value=True),
+                col_widths=[10, 2],
+            )
+        ),
+        ui.panel_conditional(
+            "input.show_step1",
+            ui.card(
+                ui.card_header("Step 1a — Total Required Revenue"),
+                ui.input_numeric(
+                    "total_required_revenue",
+                    "Total Required Revenue ($)",
+                    value=TOTAL_REQUIRED_REVENUE,
+                    min=0,
+                    step=1,
+                    width="300px",
+                ),
+            ),
+            ui.card(
+                ui.card_header("Step 1b — Input data by property class from BC Assessment and last year's revenue"),
+                ui.tags.table(
+                    ui.tags.thead(
+                        ui.tags.tr(
+                            ui.tags.th("Property Class"),
+                            ui.tags.th("Net Taxable Value ($)"),
+                            ui.tags.th("NMC Value ($)"),
+                            ui.tags.th("Prior Year Revenue ($)"),
+                        )
+                    ),
+                    ui.tags.tbody(*[make_class_row(cls) for cls in PROPERTY_CLASSES]),
+                    class_="input-table",
+                ),
+            ),
         ),
     ),
 
     ui.card(
-        ui.card_header("Step 1 — Input Data by Property Class"),
-        ui.tags.table(
-            ui.tags.thead(
-                ui.tags.tr(
-                    ui.tags.th("Property Class"),
-                    ui.tags.th("Net Taxable Value ($)"),
-                    ui.tags.th("NMC Value ($)"),
-                    ui.tags.th("Prior Year Revenue ($)"),
-                )
+        ui.card_header("Step 2 — Adjust Base Tax Increase until 'Difference to Required Revenue' is near $0"),
+        ui.input_slider(
+            "base_tax_increase",
+            "Base Tax Increase (%)",
+            min=10.0, max=14.0,
+            value=DEFAULT_BASE_TAX_INCREASE,
+            step=0.0001, post="%", width="100%",
+        ),
+    ),
+
+    ui.card(
+        ui.layout_columns(
+            ui.div(
+                ui.div(ui.output_text("stat_required"), class_="stat-value"),
+                ui.div("Total Required Revenue", class_="stat-label"),
+                class_="stat-box",
             ),
-            ui.tags.tbody(*[make_class_row(cls) for cls in PROPERTY_CLASSES]),
-            class_="input-table",
+            ui.div(
+                ui.div(ui.output_text("stat_total_rev"), class_="stat-value"),
+                ui.div("Total Revenue (incl. NMC)", class_="stat-label"),
+                class_="stat-box",
+            ),
+            ui.div(
+                ui.div(ui.output_text("stat_diff"), class_="stat-value"),
+                ui.div("Difference to Required Revenue", class_="stat-label"),
+                class_="stat-box",
+            ),
+            col_widths=[4, 4, 4],
         ),
     ),
 
     ui.card(
         ui.card_header("Calculated Results"),
-        ui.output_table("results_table"),
+        ui.p("Fixed rate classes (grey) are not impacted by Base Tax Increase.", style="font-size:0.78rem; color:#666; margin-bottom:6px;"),
+        ui.output_ui("results_table"),
     ),
 
-    ui.layout_columns(
-        ui.card(ui.card_header("Revenue Distribution"), output_widget("pie_chart")),
-        ui.card(ui.card_header("Revenue by Property Class"), output_widget("bar_chart")),
-        col_widths=[6, 6],
+    ui.card(
+        ui.card_header("Revenue Distribution (variable-rate classes only)"),
+        ui.layout_columns(
+            ui.div(
+                ui.tags.p("Prior Year Revenue", style="text-align:center; font-weight:600; margin-bottom:4px;"),
+                output_widget("prior_year_pie"),
+            ),
+            ui.div(
+                ui.tags.p("Current Year Revenue from Base", style="text-align:center; font-weight:600; margin-bottom:4px;"),
+                output_widget("pie_chart"),
+            ),
+            ui.div(
+                ui.tags.p("Current Year Revenue with NMC", style="text-align:center; font-weight:600; margin-bottom:4px;"),
+                output_widget("nmc_pie"),
+            ),
+            col_widths=[4, 4, 4],
+        ),
     ),
 )
 
@@ -180,7 +218,6 @@ def server(input, output, session):
                 tax_rate = (1000 * base_revenue / base_value) if base_value else 0
 
             revenue_incl_nmc = ntv * tax_rate / 1000
-            nmc_revenue = nmc * tax_rate / 1000
 
             rows.append({
                 "Property Class": cls,
@@ -189,15 +226,14 @@ def server(input, output, session):
                 "Base Value": base_value,
                 "Prior Year Revenue": pyr,
                 "Base Revenue": base_revenue,
-                "Tax Rate (per $1k)": tax_rate,
+                "Tax Rate": tax_rate,
                 "Revenue (incl. NMC)": revenue_incl_nmc,
-                "NMC Revenue": nmc_revenue,
             })
         return pd.DataFrame(rows)
 
     @render.text
     def stat_required():
-        return f"${TOTAL_REQUIRED_REVENUE:,.0f}"
+        return f"${input.total_required_revenue():,.0f}"
 
     @render.text
     def stat_total_rev():
@@ -205,11 +241,11 @@ def server(input, output, session):
 
     @render.text
     def stat_diff():
-        diff = calc_df()["Revenue (incl. NMC)"].sum() - TOTAL_REQUIRED_REVENUE
+        diff = calc_df()["Revenue (incl. NMC)"].sum() - (input.total_required_revenue() or 0)
         sign = "+" if diff >= 0 else ""
         return f"{sign}${diff:,.0f}"
 
-    @render.table
+    @render.ui
     def results_table():
         df = calc_df().copy()
         totals = {
@@ -219,43 +255,87 @@ def server(input, output, session):
             "Base Value": df["Base Value"].sum(),
             "Prior Year Revenue": df["Prior Year Revenue"].sum(),
             "Base Revenue": df["Base Revenue"].sum(),
-            "Tax Rate (per $1k)": None,
+            "Tax Rate": None,
             "Revenue (incl. NMC)": df["Revenue (incl. NMC)"].sum(),
-            "NMC Revenue": df["NMC Revenue"].sum(),
         }
         df = pd.concat([df, pd.DataFrame([totals])], ignore_index=True)
+
         money_cols = [
             "Net Taxable Value", "NMC Value", "Base Value",
-            "Prior Year Revenue", "Base Revenue", "Revenue (incl. NMC)", "NMC Revenue",
+            "Prior Year Revenue", "Base Revenue", "Revenue (incl. NMC)",
         ]
         for col in money_cols:
             df[col] = df[col].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "")
-        df["Tax Rate (per $1k)"] = df["Tax Rate (per $1k)"].apply(
+        df["Tax Rate"] = df["Tax Rate"].apply(
             lambda x: f"{x:.4f}" if pd.notna(x) else "—"
         )
-        return df
+
+        columns = ["Property Class", "Net Taxable Value", "NMC Value", "Base Value",
+                   "Prior Year Revenue", "Base Revenue", "Tax Rate", "Revenue (incl. NMC)"]
+
+        header_cells = [
+            ui.tags.th(c, style="padding:6px 10px; background:#f0f0f0; border:1px solid #ccc; white-space:nowrap;")
+            for c in columns
+        ]
+        header = ui.tags.thead(ui.tags.tr(*header_cells))
+
+        body_rows = []
+        for _, row in df.iterrows():
+            is_fixed = row["Property Class"] in FIXED_RATE_CLASSES
+            is_total = row["Property Class"] == "TOTAL"
+            if is_total:
+                row_style = "font-weight:700; border-top:2px solid #999;"
+            elif is_fixed:
+                row_style = "color:#999;"
+            else:
+                row_style = ""
+            cells = [
+                ui.tags.td(str(row[c]), style=f"padding:4px 10px; border:1px solid #ddd; {row_style}")
+                for c in columns
+            ]
+            body_rows.append(ui.tags.tr(*cells))
+
+        body = ui.tags.tbody(*body_rows)
+        return ui.tags.table(header, body, style="border-collapse:collapse; width:100%; font-size:0.85rem;")
+
+    def _make_pie(df, value_col, showlegend=False):
+        fig = px.pie(
+            df, values=value_col, names="Property Class", hole=0.3,
+            color="Property Class", color_discrete_map=CLASS_COLORS,
+        )
+        fig.update_traces(textposition="inside", textinfo="percent")
+        fig.update_layout(
+            height=380,
+            showlegend=showlegend,
+            legend=dict(
+                orientation="h",
+                yanchor="top",
+                y=-0.05,
+                xanchor="center",
+                x=0.5,
+                font=dict(size=11),
+            ),
+            margin=dict(t=20, b=5),
+        )
+        return fig
+
+    @render_widget
+    def prior_year_pie():
+        df = calc_df()
+        df = df[~df["Property Class"].isin(FIXED_RATE_CLASSES)]
+        return _make_pie(df, "Prior Year Revenue")
 
     @render_widget
     def pie_chart():
         df = calc_df()
-        fig = px.pie(df, values="Revenue (incl. NMC)", names="Property Class", hole=0.3)
-        fig.update_traces(textposition="inside", textinfo="percent+label")
-        fig.update_layout(height=420, showlegend=False, margin=dict(t=20))
-        return fig
+        df = df[~df["Property Class"].isin(FIXED_RATE_CLASSES)]
+        return _make_pie(df, "Base Revenue")
 
     @render_widget
-    def bar_chart():
-        df = calc_df().sort_values("Revenue (incl. NMC)", ascending=True)
-        fig = px.bar(
-            df, x="Revenue (incl. NMC)", y="Property Class",
-            orientation="h", text_auto=".3s",
-            color="Revenue (incl. NMC)", color_continuous_scale="Blues",
-        )
-        fig.update_layout(
-            height=420, xaxis_title="Revenue ($)", yaxis_title="",
-            coloraxis_showscale=False, margin=dict(t=20),
-        )
-        return fig
+    def nmc_pie():
+        df = calc_df()
+        df = df[~df["Property Class"].isin(FIXED_RATE_CLASSES)]
+        return _make_pie(df, "Revenue (incl. NMC)", showlegend=True)
 
 
 app = App(app_ui, server)
