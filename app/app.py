@@ -4,19 +4,19 @@ import pandas as pd
 from shinywidgets import output_widget, render_widget
 
 # ---------------------------------------------------------------------------
-# Static data from 2026 Tax Numbers (Hamilton).xlsx
+# Static data from 2026 Tax Numbers 
 # ---------------------------------------------------------------------------
 
 PROPERTY_CLASSES = [
     "1 - Residential",
+    "6 - Business/Other",
+    "5 - Light Industry",
+    "8 - Rec/Non Profit",
+    "7 - Managed Forest",
+    "9 - Farm",
     "2 - Utilities",
     "4 - Port",
     "4 - Port Improvement",
-    "5 - Light Industry",
-    "6 - Business/Other",
-    "7 - Managed Forest",
-    "8 - Rec/Non Profit",
-    "9 - Farm",
 ]
 
 FIXED_RATE_CLASSES = {
@@ -84,11 +84,36 @@ body { font-family: sans-serif; }
 }
 .stat-value { font-size: 1.4rem; font-weight: 700; color: #0d6efd; }
 .stat-label { font-size: 0.8rem; color: #666; margin-top: 4px; }
+/* CSS tooltip */
+.col-tip {
+    position: relative;
+    cursor: help;
+    border-bottom: 1px dotted #666;
+}
+.col-tip::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 125%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #333;
+    color: #fff;
+    padding: 5px 9px;
+    border-radius: 4px;
+    font-size: 0.78rem;
+    font-weight: 400;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s;
+    z-index: 9999;
+}
+.col-tip:hover::after { opacity: 1; }
 """
 
 app_ui = ui.page_fluid(
     ui.tags.head(ui.tags.style(CSS)),
-    ui.h2("Hamilton 2026 Tax Rate Calculator"),
+    ui.h2("Andrew's 2026 Tax Rate Calculator"),
     ui.p("Revenue Distribution Method."),
 
 
@@ -167,12 +192,13 @@ app_ui = ui.page_fluid(
 
     ui.card(
         ui.card_header("Calculated Results"),
-        ui.p("Fixed rate classes (grey) are not impacted by Base Tax Increase.", style="font-size:0.78rem; color:#666; margin-bottom:6px;"),
+        ui.p("Fixed rate classes and input data are in grey font because they are not impacted by Base Tax Increase.", style="font-size:0.78rem; color:#666; margin-bottom:6px;"),
         ui.output_ui("results_table"),
     ),
 
     ui.card(
         ui.card_header("Revenue Distribution (variable-rate classes only)"),
+        ui.p("The core of the Revenue Distribution Model is that the revenue distribution of variable-rate classes does not change from one year to the next when NMC is excluded.  In other words, the Prior Year Revenue distribution should be the same as the Current Year Base Revenue distribution.", style="font-size:0.78rem; color:#666; margin-bottom:6px;"),
         ui.layout_columns(
             ui.div(
                 ui.tags.p("Prior Year Revenue", style="text-align:center; font-weight:600; margin-bottom:4px;"),
@@ -273,26 +299,42 @@ def server(input, output, session):
         columns = ["Property Class", "Net Taxable Value", "NMC Value", "Base Value",
                    "Prior Year Revenue", "Base Revenue", "Tax Rate", "Revenue (incl. NMC)"]
 
+        col_tooltips = {
+            "Property Class":       "BC Assessment property class",
+            "Net Taxable Value":    "Total assessed value subject to taxation, including NMC",
+            "NMC Value":            "Non-Market Change Value",
+            "Base Value":           "Net Taxable Value minus NMC Value",
+            "Prior Year Revenue":   "Actual tax revenue collected from this class in the prior year",
+            "Base Revenue":         "Prior Year Revenue × (1 + Base Tax Increase), applies the same percentage increase to the revenue from all un-capped classes",
+            "Tax Rate":             "Mil Rate = 1000 × Base Revenue / Base Value",
+            "Revenue (incl. NMC)":  "Tax Rate applied to the full Net Taxable Value, including NMC",
+        }
+
         header_cells = [
-            ui.tags.th(c, style="padding:6px 10px; background:#f0f0f0; border:1px solid #ccc; white-space:nowrap;")
+            ui.tags.th(
+                ui.tags.span(c, **{"data-tooltip": col_tooltips[c], "class": "col-tip"}),
+                style="padding:6px 10px; background:#f0f0f0; border:1px solid #ccc; white-space:nowrap;",
+            )
             for c in columns
         ]
         header = ui.tags.thead(ui.tags.tr(*header_cells))
 
         body_rows = []
+        GREY_COLS = {"Net Taxable Value", "NMC Value", "Base Value", "Prior Year Revenue"}
         for _, row in df.iterrows():
             is_fixed = row["Property Class"] in FIXED_RATE_CLASSES
             is_total = row["Property Class"] == "TOTAL"
-            if is_total:
-                row_style = "font-weight:700; border-top:2px solid #999;"
-            elif is_fixed:
-                row_style = "color:#999;"
-            else:
-                row_style = ""
-            cells = [
-                ui.tags.td(str(row[c]), style=f"padding:4px 10px; border:1px solid #ddd; {row_style}")
-                for c in columns
-            ]
+            cells = []
+            for c in columns:
+                if is_total:
+                    cell_style = "padding:4px 10px; border:1px solid #ddd; font-weight:700; border-top:2px solid #999;"
+                elif is_fixed:
+                    cell_style = "padding:4px 10px; border:1px solid #ddd; color:#999;"
+                elif c in GREY_COLS:
+                    cell_style = "padding:4px 10px; border:1px solid #ddd; color:#999;"
+                else:
+                    cell_style = "padding:4px 10px; border:1px solid #ddd;"
+                cells.append(ui.tags.td(str(row[c]), style=cell_style))
             body_rows.append(ui.tags.tr(*cells))
 
         body = ui.tags.tbody(*body_rows)
