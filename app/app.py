@@ -128,6 +128,7 @@ body { font-family: sans-serif; }
     z-index: 9999;
 }
 .col-tip:hover::after { opacity: 1; }
+.step-card > .card-header { font-size: 1.1rem; font-weight: 600; }
 """
 
 app_ui = ui.page_fluid(
@@ -184,24 +185,63 @@ $(document).on('shiny:value', function() {
 })();
 """),
     ),
-    ui.h2("Revenue Distribution Model Mil Rate Calculator"),
-    ui.p("The Revenue Distribution Model applies the same percentage increase to the base tax revenue of each uncapped property class."),
-    ui.tags.b("Step 1:"), ui.span(" Collect required input data"),
+    ui.h2("Revenue Distribution Method Mil Rate Calculator"),
+    ui.hr(),
+    ui.p("The foundational principles of the Revenue Distribution Method are:"),
     ui.tags.ul(
-        ui.tags.li(ui.HTML(r"Total Revenue Required (\(T_{\text{total}}\)) from the municipal financial plan.")),
-        ui.tags.li(ui.HTML(r"Net Taxable Value of each property class (\(N_i\)) where \(i\) denotes each property class.")),
-        ui.tags.li(ui.HTML(r"Non-Market Change Value (ie 'growth') for each property class (\(G_i\)).")),
-        ui.tags.li(ui.HTML(r"Prior Year Revenue from each property class (\(P_i\)).")),
+        ui.tags.li(ui.HTML(r"market changes (assessed values) should not change the relative tax burden between property classes")),
+        ui.tags.li(ui.HTML(r"an increase in the number of properties (a non-market change) in a property class should increase the burden on that class ")),
+        style="font-size: 0.85rem;",
     ),
-    ui.tags.b("Step 2:"), ui.span(" Determine the fractional increase to the base revenue, "),
-    ui.HTML(r"\(\alpha\)"), ui.span(", using"),
-    ui.HTML(r"<div style='margin:0.5em 0 0.5em 2em;'>\[ \alpha = \frac{T_{\text{total}}}{\displaystyle\sum_i \frac{P_i}{1 - G_i / N_i}} \]</div>"),
-    ui.tags.b("Step 3:"), ui.span(" Determine the mil rates for each property class using"),
-    ui.HTML(r"<div style='margin:0.5em 0 0.5em 2em;'>\[ r_i = \alpha \frac{P_i}{N_i - G_i} \]</div>"),
-    ui.tags.b("Step 4:"), ui.span(" If any capped-rate property classes have a rate that exceeds the cap, remove the total revenue of all capped classes, "), ui.HTML(r"\(T_{\text{cap}}\)"), ui.span(", from the total:"),
-    ui.HTML(r"<div style='margin:0.5em 0 0.5em 2em;'>\[ T_{\text{uncap}} = T_{\text{total}} - T_{\text{cap}} \]</div>"),
-    ui.tags.b("Step 5:"), ui.span(" Repeat Steps 2 and 3 using "),
-    ui.HTML(r"\(T_{\text{uncap}}\)"), ui.span(" in place of "), ui.HTML(r"\(T_{\text{total}}\)"), ui.span("."),
+
+    ui.p("To achieve this the Revenue Distribution Method applies the same percentage increase to the base tax revenue of each variable-rate property class. To unpack what that means, let's start with some definitions:"),
+    ui.tags.ul(
+        ui.tags.li(ui.HTML(r"<b>Net Taxable Value \((N_i)\)</b> — The total assessed value of all properties in a class that is subject to taxation, as determined by BC Assessment. This includes both the base value and any non-market change value.")),
+        ui.tags.li(ui.HTML(r"<b>Non-Market Change Value \((G_i)\)</b> — The portion of the change in assessed value attributable to factors other than market fluctuations — for example, new construction, subdivisions, or rezoning. Also referred to as 'growth'.")),
+        ui.tags.li(ui.HTML(r"<b>Base Value \((N_i - G_i)\)</b> — The net taxable value excluding non-market change, i.e. the portion of the assessment base that existed in the prior year, adjusted only for market changes.")),
+        ui.tags.li(ui.HTML(r"<b>Prior Year Revenue \((P_i)\)</b> — The actual tax revenue collected from a property class in the preceding year, used as the base from which the current year's revenue target is derived.")),
+        ui.tags.li(ui.HTML(r"<b>Total Required Revenue \((T_{\text{total}})\)</b> — The total amount of tax revenue the municipality must collect in the current year, as determined by the financial plan adopted by council.")),
+        ui.tags.li(ui.HTML(r"<b>Mil Rate \((r_i)\)</b> — The tax rate expressed in dollars per \$1,000 of assessed value. A mil rate of 1.0 means a property assessed at \$500,000 pays \$500 in taxes.")),
+        ui.tags.li(ui.HTML(r"<b>Variable-Rate Classes</b> — Property classes whose mil rates are set by the municipality each year through the Revenue Distribution Method, including Residential, Business, Light Industry, etc. ")),
+        ui.tags.li(ui.HTML(r"<b>Capped (Fixed-Rate) Classes</b> — Property classes whose mil rates are set by provincial statute and cannot exceed a fixed cap. Their revenues are excluded from the Revenue Distribution calculation.")),
+        ui.tags.li(ui.HTML(r"<b>Fractional Increase \((\alpha)\)</b> — The multiplier applied to each variable-rate class's prior year revenue to arrive at the current year base revenue target. An \(\alpha\) of 1.12 means each class contributes 12% more base revenue than the prior year.")),
+        style="font-size: 0.85rem;",
+    ),
+
+    ui.p("There are five steps to apply the Revenue Distribution Method:"),
+
+    ui.tags.div(
+        ui.tags.b("Step 1:"), ui.span(" Collect required input data"),
+        ui.tags.ul(
+            ui.tags.li(ui.HTML(r"Total Revenue Required (\(T_{\text{total}}\))")),
+            ui.tags.li(ui.HTML(r"Net Taxable Value for each property class (\(N_i\))")),
+            ui.tags.li(ui.HTML(r"Non-Market Change Value for each property class (\(G_i\)).")),
+            ui.tags.li(ui.HTML(r"Prior Year Revenue for each property class (\(P_i\)).")),
+            style="margin-left: 2em; font-size: 0.85rem;"
+        ),
+        style="margin-left: 2em;",
+    ),
+    ui.tags.div(
+        ui.tags.b("Step 2:"), ui.span(" Determine the fractional increase to the base revenue, "),
+        ui.HTML(r"\(\alpha\)"), ui.span(", using"),
+        ui.HTML(r"<div style='margin:0.5em 0 0.5em 2em;'>\[ \alpha = \frac{T_{\text{total}}}{\displaystyle\sum_i \frac{P_i}{1 - G_i / N_i}} \]</div>"),
+        style="margin-left: 2em;",
+    ),
+    ui.tags.div(
+        ui.tags.b("Step 3:"), ui.span(" Determine the mil rates for each property class using"),
+        ui.HTML(r"<div style='margin:0.5em 0 0.5em 2em;'>\[ r_i = \alpha \frac{P_i}{N_i - G_i} \times 1000 \]</div>"),
+        style="margin-left: 2em;",
+    ),
+    ui.tags.div(
+        ui.tags.b("Step 4:"), ui.span(" If any capped-rate property classes have a rate that exceeds the cap, remove the total revenue of all capped classes, "), ui.HTML(r"\(T_{\text{cap}}\)"), ui.span(", from the total:"),
+        ui.HTML(r"<div style='margin:0.5em 0 0.5em 2em;'>\[ T_{\text{uncap}} = T_{\text{total}} - T_{\text{cap}} \]</div>"),
+        style="margin-left: 2em;",
+    ),
+    ui.tags.div(
+        ui.tags.b("Step 5:"), ui.span(" Repeat Steps 2 and 3 using "),
+        ui.HTML(r"\(T_{\text{uncap}}\)"), ui.span(" in place of "), ui.HTML(r"\(T_{\text{total}}\)"), ui.span("."),
+        style="margin-left: 2em;",
+    ),
 
     ui.hr(),
     ui.h3("Example Calculation: District of Squamish, 2026"),
@@ -210,57 +250,47 @@ $(document).on('shiny:value', function() {
     ui.p(),
 
     ui.card(
-        ui.card_header(
-            ui.layout_columns(
-                "Step 1 — Input Data",
-                ui.input_checkbox("show_step1", "Show", value=True),
-                col_widths=[10, 2],
-            )
-        ),
-        ui.panel_conditional(
-            "input.show_step1",
-            ui.tags.div(
-                ui.input_text(
-                    "total_required_revenue",
-                    "Total Required Revenue ($)",
-                    value=_fmt(TOTAL_REQUIRED_REVENUE),
-                    width="300px",
-                ),
-                class_="comma-format",
+        ui.card_header("Step 1 — Input Data"),
+        ui.tags.div(
+            ui.input_text(
+                "total_required_revenue",
+                "Total Required Revenue ($)",
+                value=_fmt(TOTAL_REQUIRED_REVENUE),
+                width="300px",
             ),
-            ui.card(
-                ui.card_header("Input data by property class from BC Assessment and last year's revenue"),
-                ui.tags.table(
-                    ui.tags.thead(
-                        ui.tags.tr(
-                            ui.tags.th("Property Class"),
-                            ui.tags.th("Net Taxable Value ($)"),
-                            ui.tags.th("NMC Value ($)"),
-                            ui.tags.th("Prior Year Revenue ($)"),
-                        )
-                    ),
-                    ui.tags.tbody(*[make_class_row(cls) for cls in PROPERTY_CLASSES]),
-                    class_="input-table",
-                ),
-            ),
+            class_="comma-format",
         ),
+        ui.p("Input Net Taxable Value, NMC Value, and prior year revenue for each property class."),
+        ui.tags.table(
+            ui.tags.thead(
+                ui.tags.tr(
+                    ui.tags.th("Property Class"),
+                    ui.tags.th("Net Taxable Value ($)"),
+                    ui.tags.th("NMC Value ($)"),
+                    ui.tags.th("Prior Year Revenue ($)"),
+                )
+            ),
+            ui.tags.tbody(*[make_class_row(cls) for cls in PROPERTY_CLASSES]),
+            class_="input-table",
+        ),
+        class_="step-card",
     ),
 
     ui.card(
-        ui.card_header("Step 2 — Calculate α (Fractional Increase to Base Revenue)"),
+        ui.card_header("Step 2 — Calculate α (fractional increase to base revenue)"),
         ui.output_ui("alpha_display"),
+        class_="step-card",
     ),
 
     ui.card(
         ui.card_header("Step 3 — Calculate Mil Rates for Each Variable-Rate Property Class"),
         ui.output_ui("step3_display"),
+        class_="step-card",
     ),
 
-
     ui.card(
-        ui.card_header("Results for Variable-Rate Classes"),
-        ui.p("The goal of the Revenue Distribution Model is to keep the revenue distribution of variable-rate (uncapped) classes constant from one year to the next before NMC revenue is applied.  In other words, the Prior Year Revenue distribution should be the same as the Current Year Base Revenue distribution.", style="font-size:0.78rem; color:#666; margin-bottom:6px;"),
-        ui.p("The table and charts below demonstrate that the goal is achieved.  Note that fixed rate classes and input data are in grey font because they are not impacted by Base Tax Increase calculation.", style="font-size:0.78rem; color:#666; margin-bottom:6px;"),
+        ui.card_header("Results"),
+        ui.p("The table and charts below demonstrate that the goal of keeping the tax burden on the base is achieved.  Note that fixed rate classes and input data are in grey because they are not impacted by calculation.", style="font-size:0.78rem; color:#666; margin-bottom:6px;"),
         ui.output_ui("results_table"),
 
         ui.layout_columns(
@@ -278,6 +308,7 @@ $(document).on('shiny:value', function() {
             ),
             col_widths=[4, 4, 4],
         ),
+        class_="step-card",
     ),
 )
 
@@ -430,7 +461,7 @@ def server(input, output, session):
                 f"= \\${total:,.0f} - \\${capped_revenue:,.0f} = \\${t_uncap:,.0f} \\]"
                 f"</p>"
             ),
-            ui.tags.p(ui.tags.b("Calculate α using T_uncap and variable-rate classes only:")),
+            ui.tags.p("Calculate α from variable-rate classes:"),
             ui.tags.table(
                 ui.tags.tbody(*denom_rows),
                 style="border-collapse:collapse; width:100%; font-size:0.87rem;",
@@ -474,7 +505,7 @@ def server(input, output, session):
 
         return ui.div(
             ui.HTML(
-                r"\[ r_i = \alpha \frac{ P_i}{N_i - G_i} \]"
+                r"\[ r_i = \alpha \frac{ P_i}{N_i - G_i} \times 1000 \]"
             ),
             ui.tags.table(
                 ui.tags.tbody(*rows),
