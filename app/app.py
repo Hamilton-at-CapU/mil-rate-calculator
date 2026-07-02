@@ -53,14 +53,34 @@ def safe_id(cls):
     return cls.replace(" ", "_").replace("/", "_").replace("-", "_")
 
 
+def _fmt(n):
+    """Format integer with thousands commas for default text input value."""
+    return f"{int(n):,}"
+
+
+def _num(val):
+    """Coerce a comma-formatted string or number to int."""
+    if val is None:
+        return 0
+    try:
+        return int(str(val).replace(",", ""))
+    except (ValueError, TypeError):
+        return 0
+
+
 def make_class_row(cls):
     ntv, nmc, pyr = DEFAULT_DATA[cls]
     c = safe_id(cls)
+    def _inp(id_, value):
+        return ui.tags.div(
+            ui.input_text(id_, None, value=_fmt(value), width="100%"),
+            class_="comma-format",
+        )
     return ui.tags.tr(
         ui.tags.td(cls, style="padding: 4px 8px; white-space: nowrap; font-size: 0.85rem; font-weight: 500;"),
-        ui.tags.td(ui.input_numeric(f"ntv_{c}", None, value=ntv, min=0, step=1, width="100%")),
-        ui.tags.td(ui.input_numeric(f"nmc_{c}", None, value=nmc, min=0, step=1, width="100%")),
-        ui.tags.td(ui.input_numeric(f"pyr_{c}", None, value=pyr, min=0, step=1, width="100%")),
+        ui.tags.td(_inp(f"ntv_{c}", ntv)),
+        ui.tags.td(_inp(f"nmc_{c}", nmc)),
+        ui.tags.td(_inp(f"pyr_{c}", pyr)),
     )
 
 
@@ -70,7 +90,6 @@ def make_class_row(cls):
 
 CSS = """
 body { font-family: sans-serif; }
-.card { margin-bottom: 1rem; }
 .input-table { border-collapse: collapse; width: 100%; }
 .input-table th {
     background: #f0f0f0; border: 1px solid #ccc;
@@ -112,12 +131,83 @@ body { font-family: sans-serif; }
 """
 
 app_ui = ui.page_fluid(
-    ui.tags.head(ui.tags.style(CSS)),
-    ui.h2("Andrew's 2026 Tax Rate Calculator"),
-    ui.p("Revenue Distribution Method."),
+    ui.tags.head(
+        ui.tags.style(CSS),
+        ui.tags.script("window.MathJax = { tex: { inlineMath: [['\\\\(','\\\\)']], displayMath: [['\\\\[','\\\\]']] }, startup: { typeset: true } };"),
+        ui.tags.script(src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js", id="MathJax-script", **{"async": ""}),
+        ui.tags.script("""
+$(document).on('shiny:value', function() {
+  setTimeout(function() {
+    if (window.MathJax && window.MathJax.typesetPromise) {
+      MathJax.typesetPromise();
+    }
+  }, 100);
+});
+"""),
+        ui.tags.script("""
+(function() {
+  function applyCommas(input) {
+    if (input._commaFormatted) return;
+    input._commaFormatted = true;
 
+    function fmt() {
+      var raw = input.value.replace(/,/g, '');
+      var n = parseFloat(raw);
+      if (!isNaN(n)) input.value = Math.round(n).toLocaleString('en-CA');
+    }
 
-    ui.br(),
+    function strip() {
+      input.value = input.value.replace(/,/g, '');
+    }
+
+    // Format on blur; strip on focus so user can edit cleanly
+    input.addEventListener('focus', strip);
+    input.addEventListener('blur', function() {
+      fmt();
+      // Notify Shiny of the raw numeric value before we reformat
+      $(input).trigger('change');
+    });
+
+    // Initial format
+    fmt();
+  }
+
+  function initAll() {
+    // Only target text inputs we control (class added below in Python)
+    document.querySelectorAll('.comma-format input[type=text]').forEach(applyCommas);
+  }
+
+  document.addEventListener('DOMContentLoaded', initAll);
+  $(document).on('shiny:value', function() { setTimeout(initAll, 80); });
+  var tries = 0;
+  var poll = setInterval(function() { initAll(); if (++tries > 20) clearInterval(poll); }, 200);
+})();
+"""),
+    ),
+    ui.h2("Revenue Distribution Model Mil Rate Calculator"),
+    ui.p("The Revenue Distribution Model applies the same percentage increase to the base tax revenue of each uncapped property class."),
+    ui.tags.b("Step 1:"), ui.span(" Collect required input data"),
+    ui.tags.ul(
+        ui.tags.li(ui.HTML(r"Total Revenue Required (\(T_{\text{total}}\)) from the municipal financial plan.")),
+        ui.tags.li(ui.HTML(r"Net Taxable Value of each property class (\(N_i\)) where \(i\) denotes each property class.")),
+        ui.tags.li(ui.HTML(r"Non-Market Change Value (ie 'growth') for each property class (\(G_i\)).")),
+        ui.tags.li(ui.HTML(r"Prior Year Revenue from each property class (\(P_i\)).")),
+    ),
+    ui.tags.b("Step 2:"), ui.span(" Determine the fractional increase to the base revenue, "),
+    ui.HTML(r"\(\alpha\)"), ui.span(", using"),
+    ui.HTML(r"<div style='margin:0.5em 0 0.5em 2em;'>\[ \alpha = \frac{T_{\text{total}}}{\displaystyle\sum_i \frac{P_i}{1 - G_i / N_i}} \]</div>"),
+    ui.tags.b("Step 3:"), ui.span(" Determine the mil rates for each property class using"),
+    ui.HTML(r"<div style='margin:0.5em 0 0.5em 2em;'>\[ r_i = \alpha \frac{P_i}{N_i - G_i} \]</div>"),
+    ui.tags.b("Step 4:"), ui.span(" If any capped-rate property classes have a rate that exceeds the cap, remove the total revenue of all capped classes, "), ui.HTML(r"\(T_{\text{cap}}\)"), ui.span(", from the total:"),
+    ui.HTML(r"<div style='margin:0.5em 0 0.5em 2em;'>\[ T_{\text{uncap}} = T_{\text{total}} - T_{\text{cap}} \]</div>"),
+    ui.tags.b("Step 5:"), ui.span(" Repeat Steps 2 and 3 using "),
+    ui.HTML(r"\(T_{\text{uncap}}\)"), ui.span(" in place of "), ui.HTML(r"\(T_{\text{total}}\)"), ui.span("."),
+
+    ui.hr(),
+    ui.h3("Example Calculation: District of Squamish, 2026"),
+
+    ui.HTML('The following is an example calculation using the District of Squamish data for 2026. The input data on Net Taxable Value and NMC per property class can be found in the 2026 Tax Rate Report to Council of the <a href="https://squamish.civicweb.net/filepro/documents/260992/?preview=264715" target="_blank">21 April 2026, Regular Council Meeting</a> (item 7.A.ii).'),
+    ui.p(),
 
     ui.card(
         ui.card_header(
@@ -129,19 +219,17 @@ app_ui = ui.page_fluid(
         ),
         ui.panel_conditional(
             "input.show_step1",
-            ui.card(
-                ui.card_header("Step 1a — Total Required Revenue"),
-                ui.input_numeric(
+            ui.tags.div(
+                ui.input_text(
                     "total_required_revenue",
                     "Total Required Revenue ($)",
-                    value=TOTAL_REQUIRED_REVENUE,
-                    min=0,
-                    step=1,
+                    value=_fmt(TOTAL_REQUIRED_REVENUE),
                     width="300px",
                 ),
+                class_="comma-format",
             ),
             ui.card(
-                ui.card_header("Step 1b — Input data by property class from BC Assessment and last year's revenue"),
+                ui.card_header("Input data by property class from BC Assessment and last year's revenue"),
                 ui.tags.table(
                     ui.tags.thead(
                         ui.tags.tr(
@@ -159,46 +247,22 @@ app_ui = ui.page_fluid(
     ),
 
     ui.card(
-        ui.card_header("Step 2 — Adjust Base Tax Increase until 'Difference to Required Revenue' is near $0"),
-        ui.input_slider(
-            "base_tax_increase",
-            "Base Tax Increase (%)",
-            min=10.0, max=14.0,
-            value=DEFAULT_BASE_TAX_INCREASE,
-            step=0.00002, post="%", width="100%",
-        ),
+        ui.card_header("Step 2 — Calculate α (Fractional Increase to Base Revenue)"),
+        ui.output_ui("alpha_display"),
     ),
 
     ui.card(
-        ui.layout_columns(
-            ui.div(
-                ui.div(ui.output_text("stat_required"), class_="stat-value"),
-                ui.div("Total Required Revenue", class_="stat-label"),
-                class_="stat-box",
-            ),
-            ui.div(
-                ui.div(ui.output_text("stat_total_rev"), class_="stat-value"),
-                ui.div("Total Revenue (incl. NMC)", class_="stat-label"),
-                class_="stat-box",
-            ),
-            ui.div(
-                ui.div(ui.output_text("stat_diff"), class_="stat-value"),
-                ui.div("Difference to Required Revenue", class_="stat-label"),
-                class_="stat-box",
-            ),
-            col_widths=[4, 4, 4],
-        ),
+        ui.card_header("Step 3 — Calculate Mil Rates for Each Variable-Rate Property Class"),
+        ui.output_ui("step3_display"),
     ),
 
+
     ui.card(
-        ui.card_header("Calculated Results"),
-        ui.p("Fixed rate classes and input data are in grey font because they are not impacted by Base Tax Increase.", style="font-size:0.78rem; color:#666; margin-bottom:6px;"),
+        ui.card_header("Results for Variable-Rate Classes"),
+        ui.p("The goal of the Revenue Distribution Model is to keep the revenue distribution of variable-rate (uncapped) classes constant from one year to the next before NMC revenue is applied.  In other words, the Prior Year Revenue distribution should be the same as the Current Year Base Revenue distribution.", style="font-size:0.78rem; color:#666; margin-bottom:6px;"),
+        ui.p("The table and charts below demonstrate that the goal is achieved.  Note that fixed rate classes and input data are in grey font because they are not impacted by Base Tax Increase calculation.", style="font-size:0.78rem; color:#666; margin-bottom:6px;"),
         ui.output_ui("results_table"),
-    ),
 
-    ui.card(
-        ui.card_header("Revenue Distribution (variable-rate classes only)"),
-        ui.p("The core of the Revenue Distribution Model is that the revenue distribution of variable-rate classes does not change from one year to the next when NMC is excluded.  In other words, the Prior Year Revenue distribution should be the same as the Current Year Base Revenue distribution.", style="font-size:0.78rem; color:#666; margin-bottom:6px;"),
         ui.layout_columns(
             ui.div(
                 ui.tags.p("Prior Year Revenue", style="text-align:center; font-weight:600; margin-bottom:4px;"),
@@ -225,24 +289,50 @@ app_ui = ui.page_fluid(
 def server(input, output, session):
 
     @reactive.calc
-    def calc_df():
-        base_pct = input.base_tax_increase() / 100.0
-        rows = []
-        for cls in PROPERTY_CLASSES:
+    def calc_alpha():
+        total = _num(input.total_required_revenue())
+        # Subtract revenue from capped (fixed-rate) classes to get T_uncap
+        capped_revenue = 0.0
+        for cls in FIXED_RATE_CLASSES:
             c = safe_id(cls)
-            ntv = getattr(input, f"ntv_{c}")() or 0
-            nmc = getattr(input, f"nmc_{c}")() or 0
-            pyr = getattr(input, f"pyr_{c}")() or 0
+            ntv = _num(getattr(input, f"ntv_{c}")())
+            nmc = _num(getattr(input, f"nmc_{c}")())
+            tax_rate = FIXED_RATE_CLASSES[cls]
+            capped_revenue += ntv * tax_rate / 1000
+        t_uncap = total - capped_revenue
+        denominator = 0.0
+        for cls in VARIABLE_CLASSES:
+            c = safe_id(cls)
+            ntv = _num(getattr(input, f"ntv_{c}")())
+            nmc = _num(getattr(input, f"nmc_{c}")())
+            pyr = _num(getattr(input, f"pyr_{c}")())
+            if ntv > 0:
+                denominator += pyr / (1 - nmc / ntv)
+        return t_uncap / denominator if denominator else 0.0
+
+    @reactive.calc
+    def calc_capped_revenue():
+        total = 0.0
+        for cls in FIXED_RATE_CLASSES:
+            c = safe_id(cls)
+            ntv = _num(getattr(input, f"ntv_{c}")())
+            tax_rate = FIXED_RATE_CLASSES[cls]
+            total += ntv * tax_rate / 1000
+        return total
+
+    @reactive.calc
+    def calc_df():
+        alpha = calc_alpha()
+        rows = []
+        for cls in VARIABLE_CLASSES:
+            c = safe_id(cls)
+            ntv = _num(getattr(input, f"ntv_{c}")())
+            nmc = _num(getattr(input, f"nmc_{c}")())
+            pyr = _num(getattr(input, f"pyr_{c}")())
 
             base_value = ntv - nmc
-
-            if cls in FIXED_RATE_CLASSES:
-                tax_rate = FIXED_RATE_CLASSES[cls]
-                base_revenue = base_value * tax_rate / 1000
-            else:
-                base_revenue = pyr * (1 + base_pct)
-                tax_rate = (1000 * base_revenue / base_value) if base_value else 0
-
+            base_revenue = alpha * pyr
+            tax_rate = (1000 * base_revenue / base_value) if base_value else 0
             revenue_incl_nmc = ntv * tax_rate / 1000
 
             rows.append({
@@ -255,11 +345,147 @@ def server(input, output, session):
                 "Tax Rate": tax_rate,
                 "Revenue (incl. NMC)": revenue_incl_nmc,
             })
-        return pd.DataFrame(rows)
+        df = pd.DataFrame(rows)
+        total_base = df["Base Revenue"].sum()
+        df["Tax Burden"] = df["Base Revenue"] / total_base if total_base else 0.0
+        return df
+
+    @render.ui
+    def alpha_display():
+        total = _num(input.total_required_revenue())
+        capped_revenue = calc_capped_revenue()
+        t_uncap = total - capped_revenue
+        alpha = calc_alpha()
+
+        # --- Capped class revenue table ---
+        capped_rows = [
+            ui.tags.tr(
+                ui.tags.th("Property Class", style="text-align:left; padding:3px 8px;"),
+                ui.tags.th("Fixed Rate ($/1000)", style="text-align:right; padding:3px 8px;"),
+                ui.tags.th("Net Taxable Value ($)", style="text-align:right; padding:3px 8px;"),
+                ui.tags.th("Revenue ($)", style="text-align:right; padding:3px 8px;"),
+            )
+        ]
+        for cls, rate in FIXED_RATE_CLASSES.items():
+            c = safe_id(cls)
+            ntv = _num(getattr(input, f"ntv_{c}")())
+            rev = ntv * rate / 1000
+            capped_rows.append(ui.tags.tr(
+                ui.tags.td(cls, style="padding:3px 8px;"),
+                ui.tags.td(f"{rate:.1f}", style="text-align:right; padding:3px 8px;"),
+                ui.tags.td(f"${ntv:,.0f}", style="text-align:right; padding:3px 8px;"),
+                ui.tags.td(f"${rev:,.0f}", style="text-align:right; padding:3px 8px;"),
+            ))
+        capped_rows.append(ui.tags.tr(
+            ui.tags.td(ui.tags.b("Total Capped Revenue"), style="padding:3px 8px;"),
+            ui.tags.td("", style="padding:3px 8px;"),
+            ui.tags.td("", style="padding:3px 8px;"),
+            ui.tags.td(ui.tags.b(f"${capped_revenue:,.0f}"), style="text-align:right; padding:3px 8px;"),
+        ))
+
+        # --- Variable class denominator table ---
+        terms = []
+        for cls in VARIABLE_CLASSES:
+            c = safe_id(cls)
+            ntv = _num(getattr(input, f"ntv_{c}")())
+            nmc = _num(getattr(input, f"nmc_{c}")())
+            pyr = _num(getattr(input, f"pyr_{c}")())
+            denom_i = 1 - nmc / ntv if ntv > 0 else 1
+            term_val = pyr / denom_i if denom_i else 0
+            terms.append((cls, pyr, nmc, ntv, denom_i, term_val))
+        denom_total = sum(t[5] for t in terms)
+
+        denom_rows = [
+            ui.tags.tr(
+                ui.tags.th("Property Class", style="text-align:left; padding:3px 8px;"),
+                ui.tags.th(ui.HTML(r"\(P_i\) (Prior Year Revenue)"), style="text-align:right; padding:3px 8px;"),
+                ui.tags.th(ui.HTML(r"\(1 - G_i/N_i\)"), style="text-align:right; padding:3px 8px;"),
+                ui.tags.th(ui.HTML(r"\(P_i \;/\; (1 - G_i/N_i)\)"), style="text-align:right; padding:3px 8px;"),
+            )
+        ]
+        for cls, pyr, nmc, ntv, denom_i, term_val in terms:
+            denom_rows.append(ui.tags.tr(
+                ui.tags.td(cls, style="padding:3px 8px;"),
+                ui.tags.td(f"${pyr:,.0f}", style="text-align:right; padding:3px 8px;"),
+                ui.tags.td(f"{denom_i:.6f}", style="text-align:right; padding:3px 8px;"),
+                ui.tags.td(f"${term_val:,.0f}", style="text-align:right; padding:3px 8px;"),
+            ))
+        denom_rows.append(ui.tags.tr(
+            ui.tags.td(ui.tags.b("Total"), style="padding:3px 8px;"),
+            ui.tags.td("", style="padding:3px 8px;"),
+            ui.tags.td("", style="padding:3px 8px;"),
+            ui.tags.td(ui.tags.b(f"${denom_total:,.0f}"), style="text-align:right; padding:3px 8px;"),
+        ))
+
+        return ui.div(
+            ui.tags.p("We already know that the capped classes; Utilities, Port, and Port Improvement would exceed their cap (see step 4), so we will subtract capped class revenues from total required revenue here (see step 5):"),
+            ui.tags.table(
+                ui.tags.tbody(*capped_rows),
+                style="border-collapse:collapse; width:100%; font-size:0.87rem;",
+                class_="input-table",
+            ),
+            ui.HTML(
+                f"<p style='margin-top:8px; font-size:0.92rem;'>"
+                f"\\[ T_{{\\text{{uncap}}}} = T_{{\\text{{total}}}} - T_{{\\text{{cap}}}} "
+                f"= \\${total:,.0f} - \\${capped_revenue:,.0f} = \\${t_uncap:,.0f} \\]"
+                f"</p>"
+            ),
+            ui.tags.p(ui.tags.b("Calculate α using T_uncap and variable-rate classes only:")),
+            ui.tags.table(
+                ui.tags.tbody(*denom_rows),
+                style="border-collapse:collapse; width:100%; font-size:0.87rem;",
+                class_="input-table",
+            ),
+            ui.HTML(
+                f"<p style='margin-top:8px; font-size:0.92rem;'>"
+                f"\\[ \\alpha = \\frac{{T_{{\\text{{uncap}}}}}}{{\\sum_i P_i / (1 - G_i/N_i)}} "
+                f"= \\frac{{\\${t_uncap:,.0f}}}{{\\${denom_total:,.0f}}} = {alpha:.6f} \\]"
+                f"</p>"
+            ),
+        )
+
+    @render.ui
+    def step3_display():
+        alpha = calc_alpha()
+        rows = [
+            ui.tags.tr(
+                ui.tags.th("Property Class", style="text-align:left; padding:3px 8px;"),
+                ui.tags.th(ui.HTML(r"\(\alpha\)"), style="text-align:right; padding:3px 8px;"),
+                ui.tags.th(ui.HTML(r"\(P_i\) (Prior Year Revenue)"), style="text-align:right; padding:3px 8px;"),
+                ui.tags.th(ui.HTML(r"\(N_i - G_i\) (Base Value)"), style="text-align:right; padding:3px 8px;"),
+                ui.tags.th(ui.HTML(r"\(r_i\) (Mil Rate)"), style="text-align:right; padding:3px 8px;"),
+            )
+        ]
+        for cls in VARIABLE_CLASSES:
+            c = safe_id(cls)
+            ntv = _num(getattr(input, f"ntv_{c}")())
+            nmc = _num(getattr(input, f"nmc_{c}")())
+            pyr = _num(getattr(input, f"pyr_{c}")())
+            base_value = ntv - nmc
+            base_revenue = alpha * pyr
+            mil_rate = (1000 * base_revenue / base_value) if base_value else 0
+            rows.append(ui.tags.tr(
+                ui.tags.td(cls, style="padding:3px 8px;"),
+                ui.tags.td(f"{alpha:.6f}", style="text-align:right; padding:3px 8px;"),
+                ui.tags.td(f"${pyr:,.0f}", style="text-align:right; padding:3px 8px;"),
+                ui.tags.td(f"${base_value:,.0f}", style="text-align:right; padding:3px 8px;"),
+                ui.tags.td(f"{mil_rate:.4f}", style="text-align:right; padding:3px 8px;"),
+            ))
+
+        return ui.div(
+            ui.HTML(
+                r"\[ r_i = \alpha \frac{ P_i}{N_i - G_i} \]"
+            ),
+            ui.tags.table(
+                ui.tags.tbody(*rows),
+                style="border-collapse:collapse; width:100%; font-size:0.87rem;",
+                class_="input-table",
+            ),
+        )
 
     @render.text
     def stat_required():
-        return f"${input.total_required_revenue():,.0f}"
+        return f"${_num(input.total_required_revenue()):,.0f}"
 
     @render.text
     def stat_total_rev():
@@ -267,7 +493,7 @@ def server(input, output, session):
 
     @render.text
     def stat_diff():
-        diff = calc_df()["Revenue (incl. NMC)"].sum() - (input.total_required_revenue() or 0)
+        diff = calc_df()["Revenue (incl. NMC)"].sum() - _num(input.total_required_revenue())
         sign = "+" if diff >= 0 else ""
         return f"{sign}${diff:,.0f}"
 
@@ -282,6 +508,7 @@ def server(input, output, session):
             "Prior Year Revenue": df["Prior Year Revenue"].sum(),
             "Base Revenue": df["Base Revenue"].sum(),
             "Tax Rate": None,
+            "Tax Burden": df["Tax Burden"].sum(),
             "Revenue (incl. NMC)": df["Revenue (incl. NMC)"].sum(),
         }
         df = pd.concat([df, pd.DataFrame([totals])], ignore_index=True)
@@ -295,9 +522,12 @@ def server(input, output, session):
         df["Tax Rate"] = df["Tax Rate"].apply(
             lambda x: f"{x:.4f}" if pd.notna(x) else "—"
         )
+        df["Tax Burden"] = df["Tax Burden"].apply(
+            lambda x: f"{x:.1%}" if pd.notna(x) else ""
+        )
 
         columns = ["Property Class", "Net Taxable Value", "NMC Value", "Base Value",
-                   "Prior Year Revenue", "Base Revenue", "Tax Rate", "Revenue (incl. NMC)"]
+                   "Prior Year Revenue", "Base Revenue", "Tax Rate", "Tax Burden", "Revenue (incl. NMC)"]
 
         col_tooltips = {
             "Property Class":       "BC Assessment property class",
@@ -305,8 +535,9 @@ def server(input, output, session):
             "NMC Value":            "Non-Market Change Value",
             "Base Value":           "Net Taxable Value minus NMC Value",
             "Prior Year Revenue":   "Actual tax revenue collected from this class in the prior year",
-            "Base Revenue":         "Prior Year Revenue × (1 + Base Tax Increase), applies the same percentage increase to the revenue from all un-capped classes",
+            "Base Revenue":         "Revenue allocated to this class under the Revenue Distribution Model",
             "Tax Rate":             "Mil Rate = 1000 × Base Revenue / Base Value",
+            "Tax Burden":           "Share of total base revenue borne by this property class",
             "Revenue (incl. NMC)":  "Tax Rate applied to the full Net Taxable Value, including NMC",
         }
 
@@ -322,14 +553,11 @@ def server(input, output, session):
         body_rows = []
         GREY_COLS = {"Net Taxable Value", "NMC Value", "Base Value", "Prior Year Revenue"}
         for _, row in df.iterrows():
-            is_fixed = row["Property Class"] in FIXED_RATE_CLASSES
             is_total = row["Property Class"] == "TOTAL"
             cells = []
             for c in columns:
                 if is_total:
                     cell_style = "padding:4px 10px; border:1px solid #ddd; font-weight:700; border-top:2px solid #999;"
-                elif is_fixed:
-                    cell_style = "padding:4px 10px; border:1px solid #ddd; color:#999;"
                 elif c in GREY_COLS:
                     cell_style = "padding:4px 10px; border:1px solid #ddd; color:#999;"
                 else:
@@ -363,21 +591,15 @@ def server(input, output, session):
 
     @render_widget
     def prior_year_pie():
-        df = calc_df()
-        df = df[~df["Property Class"].isin(FIXED_RATE_CLASSES)]
-        return _make_pie(df, "Prior Year Revenue")
+        return _make_pie(calc_df(), "Prior Year Revenue")
 
     @render_widget
     def pie_chart():
-        df = calc_df()
-        df = df[~df["Property Class"].isin(FIXED_RATE_CLASSES)]
-        return _make_pie(df, "Base Revenue")
+        return _make_pie(calc_df(), "Base Revenue")
 
     @render_widget
     def nmc_pie():
-        df = calc_df()
-        df = df[~df["Property Class"].isin(FIXED_RATE_CLASSES)]
-        return _make_pie(df, "Revenue (incl. NMC)", showlegend=True)
+        return _make_pie(calc_df(), "Revenue (incl. NMC)", showlegend=True)
 
 
 app = App(app_ui, server)
