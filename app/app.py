@@ -4,7 +4,7 @@ import pandas as pd
 from shinywidgets import output_widget, render_widget
 
 # ---------------------------------------------------------------------------
-# Static data from 2026 Tax Numbers 
+# Input data from 2026 Tax Numbers 
 # ---------------------------------------------------------------------------
 
 PROPERTY_CLASSES = [
